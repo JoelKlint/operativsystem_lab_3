@@ -79,6 +79,7 @@ static coremap_entry_t		coremap[RAM_PAGES];	/* OS data structure. */
 static unsigned			memory[RAM_SIZE];	/* Hardware: RAM. */
 static unsigned			swap[SWAP_SIZE];	/* Hardware: disk. */
 static unsigned			(*replace)(void);	/* Page repl. alg. */
+unsigned int			disk_writes;
 
 unsigned make_instr(unsigned opcode, unsigned dest, unsigned s1, unsigned s2)
 {
@@ -155,11 +156,15 @@ static unsigned fifo_page_replace()
 // Return index of physical page to be removed
 static unsigned second_chance_replace()
 {
-	int	page;
-	
-	page = INT_MAX; 
+	unsigned int page = 0;
 
-	assert(page < RAM_PAGES);
+	page_table_entry_t* p = coremap[page].owner;
+	// Find the index
+	while(p != NULL && p->referenced) {
+		p->referenced = 0;
+		page = (page + 1) % RAM_PAGES;
+		p = coremap[page].owner;
+	}
 
 	return page;
 }
@@ -182,6 +187,7 @@ static unsigned take_phys_page()
 		// If changed, write to disc
 		if(page_entry->modified) {
 			write_page(page, swap_page);
+			disk_writes += 1;
 			page_entry->ondisk = 1;
 		}
 
@@ -510,7 +516,7 @@ int run(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-#if 1
+#if 0
 	replace = fifo_page_replace;
 #else
 	replace = second_chance_replace;
@@ -519,4 +525,6 @@ int main(int argc, char** argv)
 	run(argc, argv);
 
 	printf("%llu page faults\n", num_pagefault);
+	printf("%llu disk writes\n", disk_writes);
+
 }
